@@ -2,13 +2,9 @@ import os
 import io
 import base64
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 from PIL import Image
-import markdown
 from openai import OpenAI
-
-# Import all PDF libraries (you'll need to install these)
-from pypdf import PdfReader
 import fitz  # PyMuPDF
 import pdfplumber
 
@@ -16,26 +12,19 @@ class PDFConverter:
     def __init__(self, master):
         self.master = master
         master.title("PDF to Markdown Converter")
+        master.geometry("400x200")
 
         self.label = tk.Label(master, text="Select a PDF file to convert:")
-        self.label.pack()
+        self.label.pack(pady=10)
 
         self.select_button = tk.Button(master, text="Select PDF", command=self.select_pdf)
-        self.select_button.pack()
-
-        self.library_label = tk.Label(master, text="Select PDF processing library:")
-        self.library_label.pack()
-
-        self.library_var = tk.StringVar(value="pypdf")
-        self.library_menu = ttk.Combobox(master, textvariable=self.library_var)
-        self.library_menu['values'] = ('pypdf', 'pymupdf', 'pdfplumber')
-        self.library_menu.pack()
+        self.select_button.pack(pady=5)
 
         self.convert_button = tk.Button(master, text="Convert", command=self.convert_pdf, state=tk.DISABLED)
-        self.convert_button.pack()
+        self.convert_button.pack(pady=5)
 
         self.status_label = tk.Label(master, text="")
-        self.status_label.pack()
+        self.status_label.pack(pady=10)
 
         self.client = OpenAI()  # Initialize OpenAI client
 
@@ -51,8 +40,8 @@ class PDFConverter:
             return
 
         output_folder = self.create_output_folder()
-        text_content, images = self.extract_text_and_images(self.pdf_path)
-        self.convert_to_markdown(text_content, images, output_folder)
+        content = self.extract_content(self.pdf_path)
+        self.convert_to_markdown(content, output_folder)
 
         messagebox.showinfo("Success", f"Conversion complete. Output saved in {output_folder}")
 
@@ -63,104 +52,115 @@ class PDFConverter:
         os.makedirs(os.path.join(output_folder, "images"), exist_ok=True)
         return output_folder
 
-    def extract_text_and_images(self, pdf_path):
-        library = self.library_var.get()
-        if library == 'pypdf':
-            return self.extract_with_pypdf(pdf_path)
-        elif library == 'pymupdf':
-            return self.extract_with_pymupdf(pdf_path)
-        elif library == 'pdfplumber':
-            return self.extract_with_pdfplumber(pdf_path)
-
-    def extract_with_pypdf(self, pdf_path):
-        reader = PdfReader(pdf_path)
-        text_content = []
-        images = []
+    def extract_content(self, pdf_path):
+        content = []
         
-        for page in reader.pages:
-            text = page.extract_text()
-            text_content.append(text)
-            
-            for image in page.images:
-                image_object = Image.open(io.BytesIO(image.data))
-                images.append({
-                    "image": image_object,
-                    "before_text": text_content[-1],
-                    "after_text": ""
-                })
-        
-        # Update the after_text for each image
-        for i in range(len(images) - 1):
-            images[i]["after_text"] = text_content[i + 1]
-        
-        return text_content, images
-
-    def extract_with_pymupdf(self, pdf_path):
+        # Use PyMuPDF for image extraction
         doc = fitz.open(pdf_path)
-        text_content = []
-        images = []
-
-        for page in doc:
-            text = page.get_text()
-            text_content.append(text)
-
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            content.append({"type": "text", "content": page.get_text()})
+            
             for img in page.get_images():
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                image_object = Image.open(io.BytesIO(image_bytes))
-                images.append({
-                    "image": image_object,
-                    "before_text": text_content[-1],
-                    "after_text": ""
-                })
-
-        # Update the after_text for each image
-        for i in range(len(images) - 1):
-            images[i]["after_text"] = text_content[i + 1]
-
-        return text_content, images
-
-    def extract_with_pdfplumber(self, pdf_path):
-        with pdfplumber.open(pdf_path) as pdf:
-            text_content = []
-            images = []
-
-            for page in pdf.pages:
-                text = page.extract_text()
-                text_content.append(text)
-
-                for image in page.images:
-                    image_object = Image.open(io.BytesIO(image['stream'].get_data()))
-                    images.append({
-                        "image": image_object,
-                        "before_text": text_content[-1],
-                        "after_text": ""
+                try:
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    image = Image.open(io.BytesIO(image_bytes))
+                    content.append({
+                        "type": "image",
+                        "content": image,
+                        "page": page_num
                     })
+                except Exception as e:
+                    print(f"Error extracting image: {e}")
+        
+        # Use pdfplumber for table extraction
+        with pdfplumber.open(pdf_path) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                tables = page.extract_tables()
+                for table in tables:
+                    content.append({"type": "table", "content": table, "page": page_num})
+        
+        # Sort content by page number
+        content.sort(key=lambda x: x.get("page", 0))
+        
+        return content
 
-            # Update the after_text for each image
-            for i in range(len(images) - 1):
-                images[i]["after_text"] = text_content[i + 1]
+    def table_to_markdown(self, table):
+        markdown_table = []
+        for i, row in enumerate(table):
+            markdown_row = "| " + " | ".join(str(cell) if cell is not None else "" for cell in row) + " |"
+            markdown_table.append(markdown_row)
+            if i == 0:
+                markdown_table.append("| " + " | ".join(["---"] * len(row)) + " |")
+        return "\n".join(markdown_table)
 
-            return text_content, images
+    def get_context(self, content, current_index, word_limit=200):
+        context_before = ""
+        context_after = ""
+        words_before = 0
+        words_after = 0
 
-    def describe_image(self, image):
+        # Get context before the image
+        for i in range(current_index - 1, -1, -1):
+            if content[i]["type"] == "text":
+                words = content[i]["content"].split()
+                if words_before + len(words) > word_limit:
+                    context_before = " ".join(words[-(word_limit-words_before):]) + " " + context_before
+                    break
+                context_before = content[i]["content"] + " " + context_before
+                words_before += len(words)
+            if words_before >= word_limit:
+                break
+
+        # Get context after the image
+        for i in range(current_index + 1, len(content)):
+            if content[i]["type"] == "text":
+                words = content[i]["content"].split()
+                if words_after + len(words) > word_limit:
+                    context_after += " " + " ".join(words[:word_limit-words_after])
+                    break
+                context_after += " " + content[i]["content"]
+                words_after += len(words)
+            if words_after >= word_limit:
+                break
+
+        return context_before.strip(), context_after.strip()
+
+    def describe_image_and_context(self, image, context_before, context_after):
         buffered = io.BytesIO()
         image.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode()
 
+        prompt = f"""
+    This is a pdf we are converting to markdown.
+    I need help converting the following image to text.
+    I need your help in describing this image in detail.
+    Consider the following context from the document,
+
+    Context before the image:
+    {context_before}
+
+    Context after the image:
+    {context_after}
+
+    Please provide a detailed description of the image, taking into account the surrounding context.
+        """
+
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4-vision-preview",
+                model="gpt-4o-mini",
                 messages=[
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "Describe this image in detail."},
+                            {"type": "text", "text": prompt},
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/png;base64,{img_str}"
+                                    "url": f"data:image/png;base64,{img_str}",
+                                    "detail": "auto"
                                 }
                             }
                         ]
@@ -171,27 +171,46 @@ class PDFConverter:
             return response.choices[0].message.content
         except Exception as e:
             print(f"Error in image description: {e}")
-            return "Error in image description"
+            return f"Error in image description: {str(e)}"
 
-    def convert_to_markdown(self, text_content, images, output_folder):
+    def convert_to_markdown(self, content, output_folder):
         markdown_content = []
+        image_counter = 0
         
-        for i, text in enumerate(text_content):
-            markdown_content.append(text)
-            
-            if i < len(images):
-                image = images[i]
-                image_path = os.path.join(output_folder, "images", f"image_{i}.png")
-                image["image"].save(image_path)
+        for index, item in enumerate(content):
+            if item["type"] == "text":
+                markdown_content.append(item["content"])
+            elif item["type"] == "table":
+                markdown_table = self.table_to_markdown(item["content"])
+                markdown_content.append("\n" + markdown_table + "\n")
+            elif item["type"] == "image":
+                image = item["content"]
+                image_path = os.path.join(output_folder, "images", f"image_{image_counter}.png")
+                image.save(image_path)
                 
-                image_description = self.describe_image(image["image"])
-                markdown_content.append(f"\n\n![Image {i}]({image_path})\n\n{image_description}\n\n")
+                context_before, context_after = self.get_context(content, index)
+                
+                image_description = self.describe_image_and_context(image, context_before, context_after)
+                
+                description_path = os.path.join(output_folder, "images", f"image_{image_counter}_description.txt")
+                with open(description_path, "w", encoding="utf-8") as f:
+                    f.write(image_description)
+                
+                markdown_content.append(f"\n\n![Image {image_counter}](images/image_{image_counter}.png)\n\n")
+                markdown_content.append("---\n")
+                markdown_content.append(f"### Image #{image_counter} Description\n\n{image_description}\n")
+                markdown_content.append("---\n\n")
+                image_counter += 1
         
         markdown_text = "\n".join(markdown_content)
         
         with open(os.path.join(output_folder, "output.md"), "w", encoding="utf-8") as f:
             f.write(markdown_text)
 
-root = tk.Tk()
-converter = PDFConverter(root)
-root.mainloop()
+def main():
+    root = tk.Tk()
+    converter = PDFConverter(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
