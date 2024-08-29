@@ -1,3 +1,8 @@
+"""
+This script converts a PDF file to a Markdown file with image descriptions.
+It uses PyMuPDF4LLM for PDF to Markdown conversion, PyMuPDF for image extraction, and OpenAI's GPT-4 for image description.
+"""
+
 import os
 import io
 import base64
@@ -5,8 +10,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image
 from openai import OpenAI
-import fitz  # PyMuPDF
-import pdfplumber
+import pymupdf4llm
+import pymupdf
 
 class PDFConverter:
     def __init__(self, master):
@@ -40,8 +45,7 @@ class PDFConverter:
             return
 
         output_folder = self.create_output_folder()
-        content = self.extract_content(self.pdf_path)
-        self.convert_to_markdown(content, output_folder)
+        self.convert_to_markdown(self.pdf_path, output_folder)
 
         messagebox.showinfo("Success", f"Conversion complete. Output saved in {output_folder}")
 
@@ -52,86 +56,24 @@ class PDFConverter:
         os.makedirs(os.path.join(output_folder, "images"), exist_ok=True)
         return output_folder
 
-    def extract_content(self, pdf_path):
-        content = []
+    def get_context(self, markdown_text, image_index, word_limit=200):
+        lines = markdown_text.split('\n')
+        image_line = next((i for i, line in enumerate(lines) if f"![Image {image_index}]" in line), -1)
         
-        # Use PyMuPDF for image extraction
-        doc = fitz.open(pdf_path)
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            content.append({"type": "text", "content": page.get_text()})
-            
-            for img in page.get_images():
-                try:
-                    xref = img[0]
-                    base_image = doc.extract_image(xref)
-                    image_bytes = base_image["image"]
-                    image = Image.open(io.BytesIO(image_bytes))
-                    content.append({
-                        "type": "image",
-                        "content": image,
-                        "page": page_num
-                    })
-                except Exception as e:
-                    print(f"Error extracting image: {e}")
+        if image_line == -1:
+            return "", ""
         
-        # Use pdfplumber for table extraction
-        with pdfplumber.open(pdf_path) as pdf:
-            for page_num, page in enumerate(pdf.pages):
-                tables = page.extract_tables()
-                for table in tables:
-                    content.append({"type": "table", "content": table, "page": page_num})
+        context_before = ' '.join(lines[:image_line])
+        context_after = ' '.join(lines[image_line+1:])
         
-        # Sort content by page number
-        content.sort(key=lambda x: x.get("page", 0))
+        words_before = context_before.split()[-word_limit:]
+        words_after = context_after.split()[:word_limit]
         
-        return content
+        return ' '.join(words_before), ' '.join(words_after)
 
-    def table_to_markdown(self, table):
-        markdown_table = []
-        for i, row in enumerate(table):
-            markdown_row = "| " + " | ".join(str(cell) if cell is not None else "" for cell in row) + " |"
-            markdown_table.append(markdown_row)
-            if i == 0:
-                markdown_table.append("| " + " | ".join(["---"] * len(row)) + " |")
-        return "\n".join(markdown_table)
-
-    def get_context(self, content, current_index, word_limit=200):
-        context_before = ""
-        context_after = ""
-        words_before = 0
-        words_after = 0
-
-        # Get context before the image
-        for i in range(current_index - 1, -1, -1):
-            if content[i]["type"] == "text":
-                words = content[i]["content"].split()
-                if words_before + len(words) > word_limit:
-                    context_before = " ".join(words[-(word_limit-words_before):]) + " " + context_before
-                    break
-                context_before = content[i]["content"] + " " + context_before
-                words_before += len(words)
-            if words_before >= word_limit:
-                break
-
-        # Get context after the image
-        for i in range(current_index + 1, len(content)):
-            if content[i]["type"] == "text":
-                words = content[i]["content"].split()
-                if words_after + len(words) > word_limit:
-                    context_after += " " + " ".join(words[:word_limit-words_after])
-                    break
-                context_after += " " + content[i]["content"]
-                words_after += len(words)
-            if words_after >= word_limit:
-                break
-
-        return context_before.strip(), context_after.strip()
-
-    def describe_image_and_context(self, image, context_before, context_after):
-        buffered = io.BytesIO()
-        image.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode()
+    def describe_image_and_context(self, image_path, context_before, context_after):
+        with open(image_path, "rb") as image_file:
+            img_str = base64.b64encode(image_file.read()).decode()
 
         prompt = f"""
         You are an AI assistant helping to convert documents with images into accessible text formats. 
@@ -158,7 +100,6 @@ class PDFConverter:
         8. Describe colors, shapes, spatial relationships, and any other visually significant elements.
 
         Your description should enable a person who cannot see the image to understand its content and significance within the document.
-
         """
 
         try:
@@ -186,37 +127,54 @@ class PDFConverter:
             print(f"Error in image description: {e}")
             return f"Error in image description: {str(e)}"
 
-    def convert_to_markdown(self, content, output_folder):
-        markdown_content = []
+    def convert_to_markdown(self, pdf_path, output_folder):
+        # Convert PDF to Markdown using PyMuPDF4LLM
+        markdown_text = pymupdf4llm.to_markdown(pdf_path)
+        
+        # Extract images from the PDF
+        doc = pymupdf.open(pdf_path)
         image_counter = 0
-        
-        for index, item in enumerate(content):
-            if item["type"] == "text":
-                markdown_content.append(item["content"])
-            elif item["type"] == "table":
-                markdown_table = self.table_to_markdown(item["content"])
-                markdown_content.append("\n" + markdown_table + "\n")
-            elif item["type"] == "image":
-                image = item["content"]
-                image_path = os.path.join(output_folder, "images", f"image_{image_counter}.png")
-                image.save(image_path)
+        extracted_xrefs = set()
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            image_list = page.get_images(full=True)
+            
+            for img_index, img in enumerate(image_list):
+                xref = img[0]
+                if xref in extracted_xrefs:
+                    continue  # Skip if we've already extracted this image
                 
-                context_before, context_after = self.get_context(content, index)
+                extracted_xrefs.add(xref)
                 
-                image_description = self.describe_image_and_context(image, context_before, context_after)
-                
-                description_path = os.path.join(output_folder, "images", f"image_{image_counter}_description.txt")
-                with open(description_path, "w", encoding="utf-8") as f:
-                    f.write(image_description)
-                
-                markdown_content.append(f"\n\n![Image {image_counter}](images/image_{image_counter}.png)\n\n")
-                markdown_content.append("---\n")
-                markdown_content.append(f"### Image #{image_counter} Description\n\n{image_description}\n")
-                markdown_content.append("---\n\n")
-                image_counter += 1
-        
-        markdown_text = "\n".join(markdown_content)
-        
+                try:
+                    base_image = doc.extract_image(xref)
+                    if base_image:
+                        image_bytes = base_image["image"]
+                        image_ext = base_image["ext"]
+                        image_path = os.path.join(output_folder, "images", f"image_{image_counter}.{image_ext}")
+                        
+                        with open(image_path, "wb") as image_file:
+                            image_file.write(image_bytes)
+                        
+                        context_before, context_after = self.get_context(markdown_text, image_counter)
+                        
+                        image_description = self.describe_image_and_context(image_path, context_before, context_after)
+                        
+                        description_path = os.path.join(output_folder, "images", f"image_{image_counter}_description.txt")
+                        with open(description_path, "w", encoding="utf-8") as f:
+                            f.write(image_description)
+                        
+                        # Insert image description into markdown_text
+                        image_marker = f"![Image {image_counter}]"
+                        image_description_md = f"\n\n---\n### Image #{image_counter} Description\n\n{image_description}\n---\n\n"
+                        markdown_text = markdown_text.replace(image_marker, f"{image_marker}{image_description_md}")
+                        
+                        image_counter += 1
+                except Exception as e:
+                    print(f"Error processing image on page {page_num + 1}, image {img_index + 1}: {str(e)}")
+
+        # Save the final Markdown file
         with open(os.path.join(output_folder, "output.md"), "w", encoding="utf-8") as f:
             f.write(markdown_text)
 
