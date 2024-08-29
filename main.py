@@ -84,6 +84,7 @@ def convert_pdf_to_markdown(pdf_path, api_key, user_prompt):
     output_folder = os.path.join(script_dir, f"{base_name}_output")
     os.makedirs(output_folder, exist_ok=True)
     output_md_path = os.path.join(output_folder, f"{base_name}.md")
+    output_md_with_descriptions_path = os.path.join(output_folder, f"{base_name}_with_descriptions.md")
     
     # Use pymupdf4llm for conversion, including image extraction
     try:
@@ -94,64 +95,72 @@ def convert_pdf_to_markdown(pdf_path, api_key, user_prompt):
             if file.endswith(".png"):
                 shutil.move(file, os.path.join(output_folder, file))
         
+        # Save the initial Markdown conversion immediately
+        with open(output_md_path, "w", encoding="utf-8") as f:
+            f.write(markdown_text)
+        
+        logging.info(f"Initial Markdown file saved to: {output_md_path}")
+        
     except Exception as e:
         logging.error(f"Error during PDF to Markdown conversion: {e}")
         raise
 
     # Process images and add descriptions
     converter = PDFConverter(api_key)
-    words = markdown_text.split()
-    new_words = []
+    lines = markdown_text.split('\n')
+    new_lines = []
     context_before = []
     image_count = 0
 
-    for i, word in enumerate(words):
-        new_words.append(word)
-        if word.startswith('![]'):
-            image_filename = word[4:-1]
+    for line in lines:
+        new_lines.append(line)
+        if line.strip().startswith('![]'):
+            image_filename = line.strip()[4:-1]
             image_path = os.path.join(output_folder, image_filename)
             
             if not os.path.exists(image_path):
                 logging.warning(f"Image file not found: {image_path}")
                 continue
             
-            # Get context after the image
-            context_after = ' '.join(words[i+1:i+1+CONTEXT_SIZE_WORDS])
+            # Get context before and after the image
+            context_before_text = '\n'.join(context_before[-CONTEXT_SIZE_WORDS:])
+            context_after_index = lines.index(line) + 1
+            context_after_text = '\n'.join(lines[context_after_index:context_after_index+CONTEXT_SIZE_WORDS])
             
             # Get image description
-            description = converter.describe_image_and_context(image_path, ' '.join(context_before), context_after, user_prompt)
+            description = converter.describe_image_and_context(image_path, context_before_text, context_after_text, user_prompt)
             
             # Add description after the image tag in markdown
-            new_words.extend(["\n\n**Image Description:**", description, "\n"])
+            new_lines.extend(['', '**Image Description:**', description, ''])
             
             # Save image description to a separate text file
             image_count += 1
             description_filename = f"image_description_{image_count}.txt"
             description_path = os.path.join(output_folder, description_filename)
             with open(description_path, "w", encoding="utf-8") as desc_file:
-                desc_file.write(f"Context before:\n{' '.join(context_before)}\n\n")
-                desc_file.write(f"Context after:\n{context_after}\n\n")
+                desc_file.write(f"Context before:\n{context_before_text}\n\n")
+                desc_file.write(f"Context after:\n{context_after_text}\n\n")
                 desc_file.write(f"Image Description:\n{description}\n")
             
             logging.info(f"Saved image description to: {description_path}")
         
         # Update context before
-        context_before.append(word)
-        if len(context_before) > CONTEXT_SIZE_WORDS:
+        context_before.append(line)
+        if len(context_before) > CONTEXT_SIZE_WORDS * 2:  # Keep more context lines
             context_before.pop(0)
     
-    # Join the words back into a single string
-    markdown_text = ' '.join(new_words)
+    # Join the lines back into a single string
+    markdown_text_with_descriptions = '\n'.join(new_lines)
     
-    # Write the Markdown content to a file
-    with open(output_md_path, "w", encoding="utf-8") as f:
-        f.write(markdown_text)
+    # Write the Markdown content with descriptions to a separate file
+    with open(output_md_with_descriptions_path, "w", encoding="utf-8") as f:
+        f.write(markdown_text_with_descriptions)
     
-    logging.info(f"Markdown file saved to: {output_md_path}")
-    logging.info(f"Markdown length: {len(markdown_text)}")
+    logging.info(f"Markdown file with descriptions saved to: {output_md_with_descriptions_path}")
+    logging.info(f"Markdown length (with descriptions): {len(markdown_text_with_descriptions)}")
     logging.info(f"Total images processed: {image_count}") 
     
-    return markdown_text, output_md_path, image_count
+    return markdown_text, output_md_path, output_md_with_descriptions_path, image_count
 
 def select_pdf_and_convert(api_key_var, user_prompt_var):
     pdf_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
@@ -163,11 +172,12 @@ def select_pdf_and_convert(api_key_var, user_prompt_var):
             messagebox.showerror("Error", "Please enter your OpenAI API key.")
             return
         try:
-            markdown_text, output_path, image_count = convert_pdf_to_markdown(pdf_path, api_key, user_prompt)
-            logging.info(f"Conversion completed successfully. Output path: {output_path}, Images processed: {image_count}")
+            markdown_text, output_path, output_with_descriptions_path, image_count = convert_pdf_to_markdown(pdf_path, api_key, user_prompt)
+            logging.info(f"Conversion completed successfully. Output paths: {output_path}, {output_with_descriptions_path}, Images processed: {image_count}")
             messagebox.showinfo("Conversion Complete", 
                                 f"PDF converted to Markdown.\n"
-                                f"Saved in: {os.path.dirname(output_path)}\n"
+                                f"Initial Markdown saved in: {output_path}\n"
+                                f"Markdown with descriptions saved in: {output_with_descriptions_path}\n"
                                 f"Images processed: {image_count}")
         except Exception as e:
             logging.error(f"An error occurred during conversion: {e}")
