@@ -134,18 +134,31 @@ class PDFConverter:
         img_str = base64.b64encode(buffered.getvalue()).decode()
 
         prompt = f"""
-    This is a pdf we are converting to markdown.
-    I need help converting the following image to text.
-    I need your help in describing this image in detail.
-    Consider the following context from the document,
+        You are an AI assistant helping to convert documents with images into accessible text formats. 
+        Your task is to describe an image in detail, considering its context within the document.
 
-    Context before the image:
-    {context_before}
+        Document Context:
+        1. Text before the image:
+        {context_before}
 
-    Context after the image:
-    {context_after}
+        2. Text after the image:
+        {context_after}
 
-    Please provide a detailed description of the image, taking into account the surrounding context.
+        Instructions:
+        1. Analyze the image carefully, considering all visual elements.
+        2. Provide a detailed description of the image that would be meaningful to someone who cannot see it.
+        3. Relate the image content to the surrounding text context where relevant.
+        4. Structure your description as follows:
+        a. Brief overview 
+        b. Detailed description 
+        c. Relevance to document context 
+        5. Use clear, concise language and avoid making assumptions about information not present in the image or context.
+        6. If the image contains text, include it verbatim in your description.
+        7. For diagrams, charts, or graphs, explain their type and the information they convey, including any relevant numbers or key data points.
+        8. Describe colors, shapes, spatial relationships, and any other visually significant elements.
+
+        Your description should enable a person who cannot see the image to understand its content and significance within the document.
+
         """
 
         try:
@@ -160,7 +173,7 @@ class PDFConverter:
                                 "type": "image_url",
                                 "image_url": {
                                     "url": f"data:image/png;base64,{img_str}",
-                                    "detail": "auto"
+                                    "detail": "high"
                                 }
                             }
                         ]
