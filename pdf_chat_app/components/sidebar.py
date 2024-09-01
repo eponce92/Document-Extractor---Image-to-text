@@ -58,6 +58,6 @@ def render_sidebar():
         st.divider()
         
         st.caption("PDF Chat App v1.0")
-        st.caption("Created with ❤️ by Your Company")
+        st.caption("Created with ❤️ by Ernesto Ponce")
 
     return api_key, user_prompt, process_images, process_button, context_size, use_descriptions, reload_chat
