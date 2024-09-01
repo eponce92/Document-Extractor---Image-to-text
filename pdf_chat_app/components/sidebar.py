@@ -25,7 +25,21 @@ def render_sidebar():
             user_prompt = ""
         
         use_descriptions = st.toggle("Use document with image descriptions", value=True)
-        
+
+        st.divider()
+
+        # Select box for chat model
+        chat_model = st.selectbox(
+            "Select Chat Model",
+            ("gpt-4o-mini", "gpt-4o"),
+        )
+
+        # Select box for image processing model
+        image_model = st.selectbox(
+            "Select Image Processing Model",
+            ("gpt-4o-mini", "gpt-4o"),
+        )
+
         st.divider()
 
         st.subheader("3. Process PDF")
@@ -60,4 +74,4 @@ def render_sidebar():
         st.caption("PDF Chat App v1.0")
         st.caption("Created with ❤️ by Ernesto Ponce")
 
-    return api_key, user_prompt, process_images, process_button, context_size, use_descriptions, reload_chat
+    return api_key, user_prompt, process_images, process_button, context_size, use_descriptions, reload_chat, chat_model, image_model

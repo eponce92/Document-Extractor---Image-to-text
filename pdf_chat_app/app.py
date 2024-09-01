@@ -11,6 +11,7 @@ from pdf_chat_app.src.pdf_processor import process_pdf
 from pdf_chat_app.components.sidebar import render_sidebar
 from pdf_chat_app.components.pdf_viewer import render_pdf_viewer
 from pdf_chat_app.components.chat_window import render_chat_window
+from pdf_chat_app.src.chat_handler import chat_with_assistant
 
 def main():
     # Set page configuration
@@ -41,8 +42,8 @@ def main():
         **Get started now and unlock the potential of your PDF documents!** 🚀
         """)
 
-    # Render sidebar
-    api_key, user_prompt, process_images, process_button, context_size, use_descriptions, reload_chat = render_sidebar()
+    # Render sidebar and capture selected models
+    api_key, user_prompt, process_images, process_button, context_size, use_descriptions, reload_chat, chat_model, image_model = render_sidebar()
 
     # Main area for file upload, PDF viewer, and chat
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
@@ -115,13 +116,10 @@ def main():
 
             if st.session_state.get('file_processed', False):
                 # Use the appropriate markdown text based on the use_descriptions toggle
-                if use_descriptions:
-                    markdown_text = st.session_state.get('markdown_text_with_descriptions', '')
-                else:
-                    markdown_text = st.session_state.get('markdown_text_without_descriptions', '')
-                
-                # Render chat window
-                render_chat_window(api_key, markdown_text)
+                markdown_text = st.session_state.get('markdown_text', '')
+
+                # Render chat window with the selected chat model
+                render_chat_window(api_key, markdown_text, chat_model)  # Pass chat_model here
             else:
                 st.info("Please process the PDF using the button in the sidebar before starting the chat.")
 

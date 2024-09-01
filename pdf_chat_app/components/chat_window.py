@@ -1,7 +1,7 @@
 import streamlit as st
 from pdf_chat_app.src.chat_handler import initialize_thread, chat_with_assistant, stream_string
 
-def render_chat_window(api_key, pdf_content):
+def render_chat_window(api_key, pdf_content, chat_model):  # Accept chat_model
     if not api_key:
         st.warning("Please enter your OpenAI API key in the sidebar to use the chat feature.")
         return
@@ -25,9 +25,9 @@ def render_chat_window(api_key, pdf_content):
     # Chat input at the bottom
     user_input = st.chat_input("Ask a question about the PDF document...")
     if user_input:
-        handle_user_input(api_key, user_input, chat_history_container)
+        handle_user_input(api_key, user_input, chat_history_container, chat_model)  # Pass chat_model here
 
-def handle_user_input(api_key, user_input, chat_history_container):
+def handle_user_input(api_key, user_input, chat_history_container, chat_model):  # Accept chat_model
     # Add user message to chat history and display it
     st.session_state['chat_history'].append({"role": "user", "content": user_input})
     with chat_history_container:
@@ -41,7 +41,7 @@ def handle_user_input(api_key, user_input, chat_history_container):
             full_response = ""
             with st.status("Processing...", expanded=False):
                 try:
-                    responses = chat_with_assistant(api_key, st.session_state['chat_history'], user_input)
+                    responses = chat_with_assistant(api_key, st.session_state['chat_history'], user_input, chat_model)  # Pass chat_model here
                     for response in responses:
                         if response[0] == 'assistant':
                             for chunk in stream_string(response[1]):

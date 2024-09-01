@@ -8,7 +8,7 @@ def initialize_thread(pdf_content):
         {"role": "assistant", "content": "Certainly! I've reviewed the content of the PDF document you provided. I'm ready to answer any questions you have about it, provide summaries, or help you analyze specific parts of the document. What would you like to know?"}
     ]
 
-def chat_with_assistant(api_key, messages, user_message):
+def chat_with_assistant(api_key, messages, user_message, chat_model):  # Accept chat_model
     client = OpenAI(api_key=api_key)
 
     # Add the user's message to the conversation
@@ -16,7 +16,7 @@ def chat_with_assistant(api_key, messages, user_message):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=chat_model,  # Use the selected chat model
             messages=messages,
             temperature=0.7,
             max_tokens=300,  # Increased to allow for longer responses
