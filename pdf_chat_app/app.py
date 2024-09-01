@@ -23,17 +23,21 @@ def main():
     # Popover for app description with container width set to true
     with st.popover("What is this app?", use_container_width=True):
         st.markdown("""
-        **Welcome to the PDF Chat App!** 🎉 This application allows you to upload PDF documents and interact with their content using a chat interface. 
+        **Welcome to the PDF Chat App!** 🎉 
+
+        This application allows you to **upload PDF documents** and interact with their content using a chat interface. 
         The app processes the PDF to extract text and images, providing a seamless way to ask questions and get insights about the document.
 
-        ### How to Use:
-        1. **Upload a PDF**: Click on the "Choose a PDF file" button to upload your document.
-        2. **Set Your Preferences**: 
+        ### Key Features:
+        - **Upload a PDF**: Click on the "Choose a PDF file" button to upload your document.
+        - **Set Your Preferences**: 
             - Enter your OpenAI API key.
+            - Select your preferred chat model (**gpt-4o-mini** or **gpt-4o**) for interacting with the document.
+            - Choose the image processing model to analyze visual elements in the PDF.
             - Provide any specific instructions for image descriptions.
             - Adjust the context size for image processing.
-        3. **Process the PDF**: Click the "Process PDF" button. The app will convert the PDF into a format that can be easily queried.
-        4. **Interact with the Document**: Once processing is complete, you can ask questions about the document in the chat window.
+        - **Process the PDF**: Click the "Process PDF" button. The app will convert the PDF into a format that can be easily queried.
+        - **Interact with the Document**: Once processing is complete, you can ask questions about the document in the chat window.
 
         ### Why Image Processing? 🤔
         Image processing enhances the understanding of the document by allowing the AI to analyze visual elements such as diagrams, charts, and images. 
