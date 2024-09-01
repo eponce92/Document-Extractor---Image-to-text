@@ -1,3 +1,6 @@
+# This file contains the initial implementation of the PDF Chat App.
+# It is kept for reference purposes and is not used in the current version of the application.
+
 import os
 import base64
 import pymupdf4llm

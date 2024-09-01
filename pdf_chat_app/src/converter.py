@@ -1,6 +1,8 @@
 import base64
 from openai import OpenAI
 import logging
+import pymupdf4llm
+import openai
 
 class PDFConverter:
     def __init__(self, api_key, model="gpt-4o-mini"):
@@ -63,6 +65,12 @@ class PDFConverter:
                 max_tokens=500
             )
             return response.choices[0].message.content
+        except openai.error.APIError as e:
+            logging.error(f"OpenAI API error: {e}")
+            return f"Error in image description: OpenAI API error occurred"
+        except openai.error.RateLimitError as e:
+            logging.error(f"OpenAI rate limit error: {e}")
+            return f"Error in image description: Rate limit exceeded"
         except Exception as e:
-            logging.error(f"Error in image description: {e}")
-            return f"Error in image description: {str(e)}"
+            logging.error(f"Unexpected error in image description: {e}")
+            return f"Error in image description: An unexpected error occurred"
